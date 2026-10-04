@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4A2340">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="سعراتي">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>سعراتي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+<style>
+:root{
+  --bg:#F6F2F6; --card:#FFFFFF; --ink:#2B1B29; --muted:#76657A;
+  --plum:#4A2340; --on-plum:#FFFFFF; --rose:#C2577F; --sage:#4F8466;
+  --line:#E6DCE5; --warn:#B4442E; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#1A1219;--card:#251A24;--ink:#F3EAF1;--muted:#B7A4B4;--plum:#DDA9CC;--on-plum:#2A1527;
+    --rose:#E58AAE;--sage:#8CC5A0;--line:#3B2C39;--warn:#F08C74;color-scheme:dark}
+}
+*{box-sizing:border-box;margin:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:'Readex Pro',Tahoma,'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);
+  line-height:1.6;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);min-height:100vh}
+.wrap{max-width:480px;margin:0 auto;padding:14px 18px 48px}
+header{display:flex;justify-content:space-between;align-items:baseline;padding:6px 2px}
+h1{font-size:1.3rem;font-weight:700;color:var(--plum)}
+.date{color:var(--muted);font-size:.9rem}
+
+/* الدائرة: العنصر الأبرز في الصفحة */
+.hero{display:grid;justify-items:center;padding:10px 0 4px}
+.ring{position:relative;width:min(68vw,250px);aspect-ratio:1;border:0;background:none;padding:0;color:inherit;font:inherit;cursor:pointer;border-radius:50%}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:14;stroke-linecap:round}
+.ring .track{stroke:var(--line)}
+.ring .prog{stroke:var(--plum);transition:stroke-dashoffset .6s ease,stroke .3s}
+.ring.over .prog{stroke:var(--warn)}
+.ring .mid{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.big{font-size:3.5rem;font-weight:700;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ring.over .big{color:var(--warn)}
+.lbl{color:var(--muted);font-size:.95rem;margin-top:8px}
+.stats{display:flex;justify-content:center;gap:20px;margin-top:12px;color:var(--muted);font-size:.92rem}
+.stats b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+.macros{display:flex;justify-content:center;gap:16px;margin-top:4px;font-size:.85rem;color:var(--muted)}
+
+.actions{display:grid;grid-template-columns:1fr;gap:10px;margin:22px 0 26px}
+.btn{appearance:none;border:0;border-radius:14px;padding:14px 18px;font:inherit;font-weight:500;font-size:1.05rem;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;width:100%;color:inherit;background:none}
+.btn.primary{background:var(--plum);color:var(--on-plum)}
+.btn.ghost{color:var(--plum);border:1.5px solid var(--line);background:var(--card)}
+.btn.danger{color:var(--warn);font-size:.95rem;min-height:44px}
+.btn:disabled{opacity:.55}
+.scan{min-height:66px;font-size:1.15rem}
+.scan svg{width:26px;height:26px}
+:focus-visible{outline:3px solid var(--rose);outline-offset:2px}
+
+.day h2{font-size:1rem;font-weight:500;margin:0 2px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.day h2 span{color:var(--muted);font-size:.85rem;font-weight:400}
+.list{list-style:none;padding:0;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.list li{display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)}
+.list li:first-child{border-top:0}
+.it{flex:1;min-width:0}
+.it strong{display:block;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it small{color:var(--muted);font-size:.83rem}
+.kc{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.x{border:0;background:none;color:var(--muted);width:40px;height:40px;border-radius:10px;font-size:1.4rem;line-height:1;cursor:pointer;flex:none}
+.empty{padding:26px 18px;text-align:center;color:var(--muted)}
+.pick{width:100%;text-align:start;border:0;background:none;font:inherit;color:inherit;display:flex;gap:10px;align-items:center;padding:0;cursor:pointer}
+
+/* الورقة السفلية */
+dialog.sheet{border:0;padding:0;margin:auto auto 0;width:100%;max-width:520px;max-height:92vh;
+  border-radius:22px 22px 0 0;background:var(--card);color:var(--ink)}
+dialog.sheet::backdrop{background:rgba(30,14,28,.5)}
+dialog.sheet[open]{animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(40px);opacity:.5}}
+.sheet-in{padding:16px 18px calc(22px + env(safe-area-inset-bottom));overflow:auto;max-height:92vh}
+.sheet-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.sheet-top h2{font-size:1.15rem;font-weight:500}
+#reader{border-radius:14px;overflow:hidden;background:#000;min-height:230px}
+#reader video{width:100%!important;display:block}
+.hint{color:var(--muted);font-size:.9rem;margin:10px 2px}
+.row{display:flex;gap:8px;align-items:stretch}
+.row .btn{width:auto;flex:none;padding:0 18px}
+label{display:block;font-size:.9rem;color:var(--muted);margin:12px 2px 5px}
+input{width:100%;font:inherit;font-size:16px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+input[inputmode]{direction:ltr;text-align:right}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{border:1.5px solid var(--line);background:none;border-radius:999px;padding:6px 14px;font:inherit;font-size:.92rem;color:var(--ink);cursor:pointer}
+.chip.on{background:var(--plum);border-color:var(--plum);color:var(--on-plum)}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{border:0;background:none;font:inherit;padding:10px;color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--plum);color:var(--on-plum)}
+.prod{display:flex;gap:12px;align-items:center}
+.prod img{width:60px;height:60px;object-fit:contain;border-radius:12px;background:#fff;flex:none}
+.prod h3{font-size:1.1rem;font-weight:500;line-height:1.4}
+.muted{color:var(--muted);font-size:.9rem}
+.result{display:flex;align-items:baseline;gap:8px;margin:18px 0 2px}
+.result .big{font-size:2.8rem}
+.note{background:var(--bg);border-radius:12px;padding:10px 12px;font-size:.92rem;margin-bottom:4px}
+.err{color:var(--warn);font-size:.9rem;min-height:1.3em;margin:8px 2px 0}
+.stack{display:grid;gap:8px;margin-top:16px}
+.loading{padding:40px 0;text-align:center;color:var(--muted)}
+.toast{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);padding:10px 20px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;white-space:nowrap}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>سعراتي</h1>
+    <span class="date" id="date"></span>
+  </header>
+
+  <section class="hero">
+    <button class="ring" id="ring" aria-label="تغيير هدف السعرات">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="track" cx="100" cy="100" r="86"/>
+        <circle class="prog" id="prog" cx="100" cy="100" r="86" stroke-dasharray="540.35" stroke-dashoffset="540.35"/>
+      </svg>
+      <span class="mid"><span class="big" id="remain">0</span><span class="lbl" id="remainLbl">سعرة متبقية</span></span>
+    </button>
+    <div class="stats"><span>أكلتِ <b id="eaten">0</b></span><span>الهدف <b id="goal">0</b></span></div>
+    <div class="macros" id="macros"></div>
+  </section>
+
+  <div class="actions">
+    <button class="btn primary scan" id="scanBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
+      امسحي الباركود
+    </button>
+    <button class="btn ghost" id="searchBtn">ابحثي في منتجاتك أو أضيفي جديد</button>
+  </div>
+
+  <section class="day">
+    <h2>أكل اليوم <span id="count"></span></h2>
+    <ul class="list" id="log"></ul>
+  </section>
+</div>
+
+<dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+'use strict';
+/* ===== أدوات عامة ===== */
+const $ = (s, r = document) => r.querySelector(s);
+const r1 = n => Math.round(n * 10) / 10;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// تحويل الأرقام العربية/الفارسية والفاصلة العربية إلى أرقام إنجليزية
+const toEn = s => String(s ?? '')
+  .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+  .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+  .replace(/[٫،,]/g, '.');
+const numIn = v => { const s = toEn(v).trim(); if (s === '') return null; const n = Number(s); return Number.isFinite(n) ? n : NaN; };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const norm = s => String(s || '').toLowerCase()
+  .replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const dayKey = () => { const d = new Date(); return 'log:' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const pKey = p => p.barcode || p.id;
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function beep() {
+  try {
+    const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 880; g.gain.value = .08; o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime + .12); o.onended = () => a.close();
+  } catch {}
+}
+async function api(path, opt = {}) {
+  const r = await fetch(path, { ...opt, headers: { 'content-type': 'application/json' } });
+  let data = {}; try { data = await r.json(); } catch {}
+  return { ok: r.ok, status: r.status, data };
+}
+
+/* ===== المنتجات المحفوظة على الجوال ===== */
+const getMine = () => store.get('mine', []);
+const getRecent = () => store.get('recent', []);
+function upsertMine(p, oldKey) {
+  const list = getMine().filter(x => pKey(x) !== pKey(p) && (!oldKey || pKey(x) !== oldKey));
+  list.unshift(p); store.set('mine', list);
+}
+function remember(p) {
+  const list = getRecent().filter(x => pKey(x) !== pKey(p));
+  list.unshift(p); store.set('recent', list.slice(0, 40));
+}
+function pool() {
+  const seen = new Set(), out = [];
+  for (const p of [...getMine(), ...getRecent()]) { const k = pKey(p); if (!seen.has(k)) { seen.add(k); out.push(p); } }
+  return out;
+}
+const findLocal = code => pool().find(p => p.barcode === code);
+
+async function refreshMine() {
+  try {
+    const { ok, data } = await api('/api/products');
+    if (!ok || !Array.isArray(data.products)) return;
+    const pending = store.get('pending', []).map(x => x.local);
+    store.set('mine', [...pending, ...data.products]);
+  } catch {}
+}
+// رفع المنتجات اللي انحفظت بدون إنترنت
+async function syncPending() {
+  const pending = store.get('pending', []);
+  if (!pending.length || !navigator.onLine) return;
+  const left = [];
+  for (const item of pending) {
+    try {
+      const { ok } = await api('/api/products', { method: 'POST', body: JSON.stringify(item.payload) });
+      if (!ok) left.push(item);
+    } catch { left.push(item); }
+  }
+  store.set('pending', left);
+  await refreshMine();
+}
+
+/* ===== الصفحة الرئيسية ===== */
+const C = 2 * Math.PI * 86;
+function render() {
+  const log = store.get(dayKey(), []);
+  const goal = store.get('goal', 1600);
+  const t = log.reduce((a, i) => ({ k: a.k + i.k, p: a.p + (i.p || 0), c: a.c + (i.c || 0), f: a.f + (i.f || 0) }), { k: 0, p: 0, c: 0, f: 0 });
+  const rem = Math.round(goal - t.k);
+  $('#ring').classList.toggle('over', rem < 0);
+  $('#prog').style.strokeDashoffset = C * (1 - Math.min(t.k / goal, 1));
+  $('#remain').textContent = Math.abs(rem);
+  $('#remainLbl').textContent = rem >= 0 ? 'سعرة متبقية' : 'سعرة فوق الهدف';
+  $('#eaten').textContent = Math.round(t.k);
+  $('#goal').textContent = goal;
+  $('#macros').innerHTML = t.k ? `<span>بروتين ${Math.round(t.p)}غ</span><span>كارب ${Math.round(t.c)}غ</span><span>دهون ${Math.round(t.f)}غ</span>` : '';
+  $('#date').textContent = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  $('#count').textContent = log.length ? log.length + ' عناصر' : '';
+  $('#log').innerHTML = log.length
+    ? log.map(i => `<li><div class="it"><strong>${esc(i.name)}</strong><small>${i.g} غ</small></div>
+        <span class="kc">${Math.round(i.k)}</span>
+        <button class="x" data-del="${esc(i.id)}" aria-label="حذف ${esc(i.name)}">×</button></li>`).join('')
+    : `<li class="empty">ما سجّلتِ شي اليوم. امسحي باركود أول منتج.</li>`;
+}
+$('#log').addEventListener('click', e => {
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  store.set(dayKey(), store.get(dayKey(), []).filter(i => i.id !== b.dataset.del));
+  render();
+});
+
+/* ===== الورقة السفلية ===== */
+const sheet = $('#sheet'), sheetBody = $('#sheetBody');
+function openSheet(title, html) {
+  sheetBody.innerHTML = `<div class="sheet-top"><h2>${esc(title)}</h2><button class="x" data-close aria-label="إغلاق">×</button></div>${html}`;
+  if (!sheet.open) sheet.showModal();
+  sheetBody.scrollTop = 0;
+}
+sheet.addEventListener('click', e => { if (e.target === sheet || e.target.closest('[data-close]')) sheet.close(); });
+sheet.addEventListener('close', stopScanner);
+
+/* ===== الماسح ===== */
+let qr = null, busy = false;
+async function stopScanner() {
+  const q = qr; qr = null;
+  if (q) { try { if (q.isScanning) await q.stop(); q.clear(); } catch {} }
+}
+async function openScanner() {
+  openSheet('امسحي الباركود', `
+    <div id="reader"></div>
+    <p class="hint" id="scanHint">وجّهي الكاميرا على الباركود وثبّتي الجوال.</p>
+    <div class="row"><input id="manualCode" inputmode="numeric" placeholder="أو اكتبي رقم الباركود" autocomplete="off">
+    <button class="btn ghost" id="manualGo">ابحثي</button></div>`);
+  $('#manualGo').onclick = () => { const c = toEn($('#manualCode').value).replace(/\D/g, ''); if (c) { stopScanner(); lookup(c); } };
+  if (!window.Html5Qrcode) { $('#scanHint').textContent = 'الماسح ما اشتغل. اكتبي رقم الباركود بدلاً منه.'; return; }
+  const F = Html5QrcodeSupportedFormats;
+  const q = new Html5Qrcode('reader', { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
+  qr = q;
+  try {
+    await q.start({ facingMode: 'environment' },
+      { fps: 12, qrbox: (w, h) => ({ width: Math.max(120, Math.floor(w * .85)), height: Math.max(60, Math.floor(Math.min(h * .45, 150))) }) },
+      code => onScan(code), () => {});
+    if (qr !== q) { try { await q.stop(); q.clear(); } catch {} } // انقفلت الورقة أثناء التشغيل
+  } catch {
+    if (qr === q) $('#scanHint').textContent = 'ما قدرت أفتح الكاميرا. اسمحي للمتصفح باستخدام الكاميرا من الإعدادات، أو اكتبي الرقم.';
+  }
+}
+async function onScan(code) {
+  if (busy) return; busy = true;
+  navigator.vibrate?.(70); beep();
+  await stopScanner();
+  await lookup(String(code).replace(/\D/g, ''));
+  busy = false;
+}
+
+async function lookup(code) {
+  openSheet('جاري البحث', `<p class="loading">أبحث عن المنتج ${esc(code)}</p>`);
+  let res;
+  try { res = await api('/api/product/' + code); }
+  catch {
+    const local = findLocal(code);
+    if (local) return showProduct(local);
+    return showForm({ barcode: code }, 'ما فيه اتصال بالإنترنت والمنتج مو محفوظ على الجوال. تقدرين تدخلين بياناته من الملصق.');
+  }
+  if (!res.ok && res.status !== 404) {
+    const local = findLocal(code);
+    if (local) return showProduct(local);
+    openSheet('صار خطأ', `<p class="note">${esc(res.data.error || 'تعذّر جلب المنتج')}</p>
+      <div class="stack"><button class="btn primary" id="retry">حاولي مرة ثانية</button>
+      <button class="btn ghost" id="manual">أدخلي البيانات يدوياً</button></div>`);
+    $('#retry').onclick = () => lookup(code);
+    $('#manual').onclick = () => showForm({ barcode: code });
+    return;
+  }
+  const p = res.data.product;
+  if (!p) return showForm({ barcode: code }, 'هذا المنتج مو موجود. أدخلي بياناته من الملصق، وينحفظ للمرات الجاية.');
+  if (p.kcal == null) return showForm(p, 'المنتج موجود بس بدون سعرات. كمّلي البيانات من الملصق.');
+  remember(p);
+  showProduct(p);
+}
+
+/* ===== عرض المنتج واختيار الكمية ===== */
+function showProduct(p) {
+  const serving = p.serving ? Math.round(p.serving) : null;
+  const chips = [...new Set([serving, 50, 100, 150, 200].filter(Boolean))];
+  const start = serving || 100;
+  openSheet('كم أكلتِ؟', `
+    <div class="prod">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ''}
+      <div><h3>${esc(p.name)}</h3><p class="muted">${esc(p.brand || '')}</p></div></div>
+    <p class="note" style="margin-top:12px">${r1(p.kcal)} سعرة لكل 100 غ${serving ? `، والحصة ${serving} غ` : ''}</p>
+    <label for="grams">الكمية بالجرام أو المل</label>
+    <input id="grams" inputmode="decimal" value="${start}" autocomplete="off">
+    <div class="chips" id="chips">${chips.map(c => `<button class="chip${c === start ? ' on' : ''}" data-g="${c}">${c === serving ? 'حصة ' : ''}${c} غ</button>`).join('')}</div>
+    <div class="result"><span class="big" id="calc">0</span><span class="muted">سعرة</span></div>
+    <p class="muted" id="calcM"></p>
+    <p class="err" id="gErr"></p>
+    <div class="stack">
+      <button class="btn primary" id="addLog">أضيفيها لليوم</button>
+      <button class="btn ghost" id="editP">عدّلي بيانات المنتج</button>
+    </div>`);
+  const gi = $('#grams');
+  const calc = () => {
+    const g = numIn(gi.value);
+    document.querySelectorAll('#chips .chip').forEach(c => c.classList.toggle('on', Number(c.dataset.g) === g));
+    if (!(g > 0)) { $('#calc').textContent = '0'; $('#calcM').textContent = ''; return null; }
+    const f = g / 100;
+    $('#calc').textContent = Math.round(p.kcal * f);
+    const m = [];
+    if (p.protein != null) m.push(`بروتين ${r1(p.protein * f)}غ`);
+    if (p.carbs != null) m.push(`كارب ${r1(p.carbs * f)}غ`);
+    if (p.fat != null) m.push(`دهون ${r1(p.fat * f)}غ`);
+    $('#calcM').textContent = m.join('، ');
+    return g;
+  };
+  gi.oninput = () => { $('#gErr').textContent = ''; calc(); };
+  $('#chips').onclick = e => { const c = e.target.closest('[data-g]'); if (c) { gi.value = c.dataset.g; calc(); } };
+  calc();
+  $('#addLog').onclick = () => {
+    const g = calc();
+    if (!g || g > 5000) { $('#gErr').textContent = 'اكتبي كمية صحيحة بالجرام'; gi.focus(); return; }
+    const f = g / 100;
+    const log = store.get(dayKey(), []);
+    log.push({ id: uid(), name: p.name, g: r1(g), k: r1(p.kcal * f),
+      p: p.protein != null ? r1(p.protein * f) : 0, c: p.carbs != null ? r1(p.carbs * f) : 0, f: p.fat != null ? r1(p.fat * f) : 0 });
+    store.set(dayKey(), log);
+    remember(p);
+    sheet.close(); render(); toast('أُضيفت لأكل اليوم');
+  };
+  $('#editP').onclick = () => showForm(p);
+}
+
+/* ===== نموذج إضافة / تعديل منتج ===== */
+function showForm(p = {}, msg = '') {
+  const editing = !!p.mine;
+  let basis = '100';
+  const v = x => (x == null ? '' : r1(x));
+  openSheet(editing ? 'تعديل المنتج' : 'منتج جديد', `
+    ${msg ? `<p class="note">${esc(msg)}</p>` : ''}
+    <label for="fName">اسم المنتج</label>
+    <input id="fName" value="${esc(p.name === 'منتج بدون اسم' ? '' : p.name || '')}" maxlength="80" autocomplete="off">
+    <div class="g2">
+      <div><label for="fBrand">الشركة (اختياري)</label><input id="fBrand" value="${esc(p.brand || '')}" maxlength="50" autocomplete="off"></div>
+      <div><label for="fCode">الباركود (اختياري)</label><input id="fCode" inputmode="numeric" value="${esc(p.barcode || '')}" autocomplete="off"></div>
+    </div>
+    <label>القيم المكتوبة في الملصق لكل</label>
+    <div class="seg" id="seg"><button data-b="100" class="on">100 غ أو مل</button><button data-b="srv">حصة</button></div>
+    <label for="fServ">حجم الحصة بالجرام <span id="servReq">(اختياري)</span></label>
+    <input id="fServ" inputmode="decimal" value="${v(p.serving)}" autocomplete="off">
+    <label for="fKcal">السعرات</label>
+    <input id="fKcal" inputmode="decimal" value="${v(p.kcal)}" autocomplete="off">
+    <div class="g3">
+      <div><label for="fP">بروتين غ</label><input id="fP" inputmode="decimal" value="${v(p.protein)}"></div>
+      <div><label for="fC">كارب غ</label><input id="fC" inputmode="decimal" value="${v(p.carbs)}"></div>
+      <div><label for="fF">دهون غ</label><input id="fF" inputmode="decimal" value="${v(p.fat)}"></div>
+    </div>
+    <p class="err" id="fErr"></p>
+    <div class="stack">
+      <button class="btn primary" id="fSave">احفظي المنتج</button>
+      ${editing ? '<button class="btn danger" id="fDel">احذفي المنتج</button>' : ''}
+    </div>`);
+
+  $('#seg').onclick = e => {
+    const b = e.target.closest('[data-b]'); if (!b || b.dataset.b === basis) return;
+    basis = b.dataset.b;
+    document.querySelectorAll('#seg button').forEach(x => x.classList.toggle('on', x === b));
+    $('#servReq').textContent = basis === 'srv' ? '' : '(اختياري)';
+    if (basis === 'srv') $('#fServ').focus();
+  };
+
+  $('#fSave').onclick = async () => {
+    const err = m => { $('#fErr').textContent = m; };
+    const name = $('#fName').value.trim();
+    if (!name) return err('اكتبي اسم المنتج');
+    const code = toEn($('#fCode').value).replace(/\D/g, '');
+    if (code && (code.length < 6 || code.length > 14)) return err('رقم الباركود غير صحيح');
+    const serving = numIn($('#fServ').value);
+    if (Number.isNaN(serving) || (serving != null && serving <= 0)) return err('حجم الحصة غير صحيح');
+    if (basis === 'srv' && !serving) return err('اكتبي حجم الحصة بالجرام عشان أحسب لكل 100 غ');
+    const vals = ['#fKcal', '#fP', '#fC', '#fF'].map(s => numIn($(s).value));
+    if (vals[0] == null) return err('اكتبي السعرات');
+    if (vals.some(x => Number.isNaN(x) || x < 0)) return err('الأرقام لازم تكون صحيحة وموجبة');
+    // تحويل قيم الحصة إلى قيم لكل 100غ
+    const k = basis === 'srv' ? 100 / serving : 1;
+    const [kcal, protein, carbs, fat] = vals.map(x => (x == null ? null : r1(x * k)));
+    if (kcal > 900) return err('السعرات لكل 100 غ ما تتجاوز 900، راجعي الرقم أو اختاري "حصة"');
+    if ((protein || 0) + (carbs || 0) + (fat || 0) > 105) return err('مجموع البروتين والكارب والدهون أكثر من 100 غ، راجعي الأرقام');
+
+    const payload = { name, brand: $('#fBrand').value.trim(), barcode: code || null, kcal, protein, carbs, fat, serving };
+    if (editing && !p.barcode && !code && /^m/.test(p.id || '')) payload.id = p.id;
+    const oldKey = editing ? pKey(p) : null;
+    const btn = $('#fSave'); btn.disabled = true; btn.textContent = 'جاري الحفظ';
+
+    let saved;
+    try {
+      const { ok, data } = await api('/api/products', { method: 'POST', body: JSON.stringify(payload) });
+      if (!ok) { btn.disabled = false; btn.textContent = 'احفظي المنتج'; return err(data.error || 'ما انحفظ المنتج، حاولي مرة ثانية'); }
+      saved = data.product;
+      // لو تغيّر الباركود أو أُضيف لمنتج كان بدونه، نحذف النسخة القديمة
+      if (oldKey && oldKey !== pKey(saved)) api('/api/products?id=' + encodeURIComponent(oldKey), { method: 'DELETE' }).catch(() => {});
+      toast('انحفظ المنتج');
+    } catch {
+      // بدون إنترنت: نحفظه على الجوال ونرفعه لاحقاً
+      saved = { ...payload, id: code || 'local-' + uid(), image: null, mine: true };
+      store.set('pending', [...store.get('pending', []), { payload, local: saved }]);
+      toast('انحفظ على الجوال، وبيترفع لما يرجع النت');
+    }
+    upsertMine(saved, oldKey);
+    remember(saved);
+    showProduct(saved);
+  };
+
+  if (editing) $('#fDel').onclick = async () => {
+    if (!confirm('تحذفين "' + p.name + '" من منتجاتك؟')) return;
+    try {
+      const { ok, data } = await api('/api/products?id=' + encodeURIComponent(pKey(p)), { method: 'DELETE' });
+      if (!ok) return ($('#fErr').textContent = data.error || 'ما انحذف المنتج');
+    } catch { return ($('#fErr').textContent = 'تحتاجين إنترنت عشان تحذفين المنتج'); }
+    store.set('mine', getMine().filter(x => pKey(x) !== pKey(p)));
+    store.set('recent', getRecent().filter(x => pKey(x) !== pKey(p)));
+    sheet.close(); toast('انحذف المنتج');
+  };
+}
+
+/* ===== البحث في المنتجات ===== */
+function openSearch() {
+  openSheet('منتجاتك', `
+    <input id="q" placeholder="اكتبي اسم المنتج" autocomplete="off">
+    <ul class="list" id="results" style="margin-top:12px"></ul>
+    <div class="stack"><button class="btn ghost" id="newP">أضيفي منتج جديد</button></div>`);
+  const draw = () => {
+    const q = norm($('#q').value.trim());
+    const items = pool().filter(p => !q || norm(p.name + ' ' + (p.brand || '')).includes(q)).slice(0, 50);
+    $('#results').innerHTML = items.length
+      ? items.map((p, i) => `<li><button class="pick" data-i="${i}"><span class="it"><strong>${esc(p.name)}</strong>
+          <small>${esc(p.brand || '')}${p.brand ? '، ' : ''}${r1(p.kcal)} سعرة لكل 100 غ</small></span></button></li>`).join('')
+      : `<li class="empty">${q ? 'ما لقيت منتج بهذا الاسم.' : 'المنتجات اللي تمسحينها أو تضيفينها بتظهر هنا.'}</li>`;
+    $('#results').onclick = e => { const b = e.target.closest('[data-i]'); if (b) showProduct(items[b.dataset.i]); };
+  };
+  $('#q').oninput = draw;
+  $('#newP').onclick = () => showForm({});
+  draw();
+  refreshMine().then(() => { if ($('#q')) draw(); });
+}
+
+/* ===== تغيير الهدف ===== */
+function openGoal() {
+  openSheet('هدف السعرات اليومي', `
+    <label for="gIn">عدد السعرات في اليوم</label>
+    <input id="gIn" inputmode="numeric" value="${store.get('goal', 1600)}">
+    <p class="err" id="gE"></p>
+    <div class="stack"><button class="btn primary" id="gSave">احفظي الهدف</button></div>`);
+  $('#gSave').onclick = () => {
+    const g = numIn($('#gIn').value);
+    if (!(g >= 500 && g <= 6000)) return ($('#gE').textContent = 'اكتبي رقم بين 500 و 6000');
+    store.set('goal', Math.round(g)); sheet.close(); render(); toast('انحفظ الهدف');
+  };
+}
+
+$('#scanBtn').onclick = openScanner;
+$('#searchBtn').onclick = openSearch;
+$('#ring').onclick = openGoal;
+
+// تنظيف سجلات الأيام الأقدم من 60 يوم
+(() => { try {
+  const limit = Date.now() - 60 * 864e5;
+  Object.keys(localStorage).filter(k => k.startsWith('log:')).forEach(k => { if (new Date(k.slice(4)).getTime() < limit) localStorage.removeItem(k); });
+} catch {} })();
+
+render();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+window.addEventListener('online', syncPending);
+syncPending().then(refreshMine);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+</script>
+</body>
+</html>
