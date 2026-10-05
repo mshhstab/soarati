@@ -112,6 +112,9 @@ input[inputmode]{direction:ltr;text-align:right}
 .toast{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   background:var(--ink);color:var(--bg);padding:10px 20px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;white-space:nowrap}
 .toast.show{opacity:1}
+.tag{display:inline-block;font-size:.72rem;font-weight:400;line-height:1.5;color:var(--rose);border:1px solid currentColor;
+  border-radius:999px;padding:0 7px;margin-inline-start:4px;vertical-align:middle;white-space:nowrap}
+.sub{font-size:.95rem;font-weight:500;margin:18px 2px 8px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -139,7 +142,7 @@ input[inputmode]{direction:ltr;text-align:right}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
       امسحي الباركود
     </button>
-    <button class="btn ghost" id="searchBtn">ابحثي في منتجاتك أو أضيفي جديد</button>
+    <button class="btn ghost" id="searchBtn">ابحثي بالاسم أو أضيفي جديد</button>
   </div>
 
   <section class="day">
@@ -151,6 +154,7 @@ input[inputmode]{direction:ltr;text-align:right}
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="/foods.js"></script>
 <script>
 'use strict';
 /* ===== أدوات عامة ===== */
@@ -198,6 +202,7 @@ function upsertMine(p, oldKey) {
   list.unshift(p); store.set('mine', list);
 }
 function remember(p) {
+  if (p.food) return; // أصناف القائمة موجودة دائماً على الجوال
   const list = getRecent().filter(x => pKey(x) !== pKey(p));
   list.unshift(p); store.set('recent', list.slice(0, 40));
 }
@@ -207,6 +212,56 @@ function pool() {
   return out;
 }
 const findLocal = code => pool().find(p => p.barcode === code);
+
+/* ===== قائمة الأكلات العامة (foods.js) ===== */
+const FOOD_LIST = typeof FOODS !== 'undefined' && Array.isArray(FOODS) ? FOODS : [];
+const FOOD_BY_ID = new Map(FOOD_LIST.map(f => [f.id, f]));
+const fromFood = f => ({ id: f.id, barcode: null, name: f.name, brand: '', kcal: f.kcal, protein: f.p, carbs: f.c, fat: f.f,
+  serving: null, units: f.units, approx: !!f.approx, food: true, image: null });
+const FOOD_ITEMS = FOOD_LIST.map(f => ({ p: fromFood(f), terms: [f.name, ...(f.alt || [])].map(norm) }));
+// الوحدات: وحدات الصنف، أو حصة المنتج إذا مكتوبة
+const unitsOf = p => (Array.isArray(p.units) && p.units.length ? p.units : p.serving ? [{ n: 'حصة', g: r1(p.serving) }] : []);
+const fmtQ = n => ({ 0.25: '¼', 0.5: '½', 0.75: '¾' }[n] || String(n));
+
+// درجة التطابق: 0 نفس الاسم، 1 يبدأ بالكلمة، 2 كلمة فيه تبدأ بها، 3 يحتويها، 4 كل الكلمات موجودة، -1 ما يطابق
+function rank(terms, q) {
+  const qs = q.length > 3 && q.startsWith('ال') ? [q, q.slice(2)] : [q];
+  let best = -1;
+  for (const t of terms) for (const x of qs) {
+    const r = t === x ? 0 : t.startsWith(x) ? 1 : (' ' + t).includes(' ' + x) ? 2 : t.includes(x) ? 3 : -1;
+    if (r >= 0 && (best < 0 || r < best)) best = r;
+  }
+  if (best < 0 && q.includes(' ')) { const all = terms.join(' '); if (q.split(' ').every(w => all.includes(w))) best = 4; }
+  return best;
+}
+// البحث: منتجاتها أولاً، ثم قائمة الأكلات، ثم الممسوحة مؤخراً، بدون تكرار
+function searchLocal(raw) {
+  const q = norm(raw).replace(/\s+/g, ' ').trim();
+  const mine = getMine(), recent = getRecent();
+  const seen = new Set(), out = [];
+  if (!q) {
+    for (const p of [...mine, ...recent]) { const k = pKey(p); if (!seen.has(k)) { seen.add(k); out.push(p); } }
+    return out.slice(0, 50);
+  }
+  // الصنف اللي عدّلته يظهر بنسخته المعدّلة بدل الأصلي
+  const refs = new Set(mine.map(p => p.ref).filter(Boolean));
+  const termsOf = p => {
+    const base = p.ref && FOOD_BY_ID.get(p.ref);
+    return [p.name, p.brand, ...(base ? [base.name, ...(base.alt || [])] : [])].filter(Boolean).map(norm);
+  };
+  const cands = [
+    ...mine.map(p => ({ p, terms: termsOf(p) })),
+    ...FOOD_ITEMS.filter(x => !refs.has(x.p.id)),
+    ...recent.map(p => ({ p, terms: termsOf(p) })),
+  ];
+  cands.forEach(({ p, terms }, i) => {
+    const k = pKey(p); if (seen.has(k)) return; seen.add(k);
+    const r = rank(terms, q);
+    if (r >= 0) out.push({ p, r, i });
+  });
+  out.sort((a, b) => a.r - b.r || a.i - b.i);
+  return out.slice(0, 50).map(x => x.p);
+}
 
 async function refreshMine() {
   try {
@@ -248,10 +303,10 @@ function render() {
   $('#date').textContent = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
   $('#count').textContent = log.length ? log.length + ' عناصر' : '';
   $('#log').innerHTML = log.length
-    ? log.map(i => `<li><div class="it"><strong>${esc(i.name)}</strong><small>${i.g} غ</small></div>
+    ? log.map(i => `<li><div class="it"><strong>${esc(i.name)}</strong><small>${i.u ? `${fmtQ(i.n)} ${esc(i.u)} (${i.g} غ)` : `${i.g} غ`}</small></div>
         <span class="kc">${Math.round(i.k)}</span>
         <button class="x" data-del="${esc(i.id)}" aria-label="حذف ${esc(i.name)}">×</button></li>`).join('')
-    : `<li class="empty">ما سجّلتِ شي اليوم. امسحي باركود أول منتج.</li>`;
+    : `<li class="empty">ما سجّلتِ شي اليوم. امسحي باركود أو ابحثي عن أكلة بالاسم.</li>`;
 }
 $('#log').addEventListener('click', e => {
   const b = e.target.closest('[data-del]'); if (!b) return;
@@ -333,46 +388,67 @@ async function lookup(code) {
 /* ===== عرض المنتج واختيار الكمية ===== */
 function showProduct(p) {
   const serving = p.serving ? Math.round(p.serving) : null;
-  const chips = [...new Set([serving, 50, 100, 150, 200].filter(Boolean))];
-  const start = serving || 100;
+  const units = unitsOf(p);
+  const isFood = !!(p.food || p.ref);
+  let unit = Array.isArray(p.units) && p.units.length ? 0 : -1; // -1 = بالجرام
   openSheet('كم أكلتِ؟', `
     <div class="prod">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ''}
-      <div><h3>${esc(p.name)}</h3><p class="muted">${esc(p.brand || '')}</p></div></div>
-    <p class="note" style="margin-top:12px">${r1(p.kcal)} سعرة لكل 100 غ${serving ? `، والحصة ${serving} غ` : ''}</p>
-    <label for="grams">الكمية بالجرام أو المل</label>
-    <input id="grams" inputmode="decimal" value="${start}" autocomplete="off">
-    <div class="chips" id="chips">${chips.map(c => `<button class="chip${c === start ? ' on' : ''}" data-g="${c}">${c === serving ? 'حصة ' : ''}${c} غ</button>`).join('')}</div>
+      <div><h3>${esc(p.name)}${p.approx ? ' <span class="tag">تقريبي</span>' : ''}</h3><p class="muted">${esc(p.brand || '')}</p></div></div>
+    <p class="note" style="margin-top:12px">${r1(p.kcal)} سعرة لكل 100 غ${serving ? `، والحصة ${serving} غ` : ''}${p.approx ? '. القيم تقريبية لأن الطبخ يختلف من بيت لبيت' : ''}</p>
+    ${units.length ? `<label>الوحدة</label><div class="chips" id="units" style="margin-top:0">${units.map((u, i) =>
+      `<button class="chip" data-u="${i}">${esc(u.n)}</button>`).join('')}<button class="chip" data-u="-1">جرام</button></div>` : ''}
+    <label for="grams" id="qLbl"></label>
+    <input id="grams" inputmode="decimal" autocomplete="off">
+    <div class="chips" id="chips"></div>
     <div class="result"><span class="big" id="calc">0</span><span class="muted">سعرة</span></div>
     <p class="muted" id="calcM"></p>
     <p class="err" id="gErr"></p>
     <div class="stack">
       <button class="btn primary" id="addLog">أضيفيها لليوم</button>
-      <button class="btn ghost" id="editP">عدّلي بيانات المنتج</button>
+      <button class="btn ghost" id="editP">${isFood ? 'عدّلي بيانات الصنف' : 'عدّلي بيانات المنتج'}</button>
     </div>`);
   const gi = $('#grams');
+  // يرجّع العدد والجرامات، أو null لو الكمية غير صالحة
   const calc = () => {
-    const g = numIn(gi.value);
-    document.querySelectorAll('#chips .chip').forEach(c => c.classList.toggle('on', Number(c.dataset.g) === g));
+    const v = numIn(gi.value), u = units[unit];
+    document.querySelectorAll('#chips .chip').forEach(c => c.classList.toggle('on', Number(c.dataset.g) === v));
+    const g = v > 0 ? (u ? v * u.g : v) : 0;
     if (!(g > 0)) { $('#calc').textContent = '0'; $('#calcM').textContent = ''; return null; }
     const f = g / 100;
     $('#calc').textContent = Math.round(p.kcal * f);
-    const m = [];
+    const m = u ? [`${r1(g)} غ`] : [];
     if (p.protein != null) m.push(`بروتين ${r1(p.protein * f)}غ`);
     if (p.carbs != null) m.push(`كارب ${r1(p.carbs * f)}غ`);
     if (p.fat != null) m.push(`دهون ${r1(p.fat * f)}غ`);
     $('#calcM').textContent = m.join('، ');
-    return g;
+    return { v, g };
+  };
+  const setUnit = i => {
+    unit = i;
+    const u = units[i];
+    document.querySelectorAll('#units .chip').forEach(c => c.classList.toggle('on', Number(c.dataset.u) === i));
+    $('#qLbl').textContent = u ? `العدد (${u.n} = ${r1(u.g)} غ)` : 'الكمية بالجرام أو المل';
+    const quick = u ? [0.5, 1, 1.5, 2, 3] : [...new Set([units.length ? null : serving, 50, 100, 150, 200].filter(Boolean))];
+    $('#chips').innerHTML = quick.map(c => `<button class="chip" data-g="${c}">${u ? fmtQ(c) : (c === serving ? 'حصة ' : '') + c + ' غ'}</button>`).join('');
+    gi.value = u ? 1 : (serving || 100);
+    $('#gErr').textContent = '';
+    calc();
   };
   gi.oninput = () => { $('#gErr').textContent = ''; calc(); };
   $('#chips').onclick = e => { const c = e.target.closest('[data-g]'); if (c) { gi.value = c.dataset.g; calc(); } };
-  calc();
+  if (units.length) $('#units').onclick = e => { const c = e.target.closest('[data-u]'); if (c) setUnit(Number(c.dataset.u)); };
+  setUnit(unit);
   $('#addLog').onclick = () => {
-    const g = calc();
-    if (!g || g > 5000) { $('#gErr').textContent = 'اكتبي كمية صحيحة بالجرام'; gi.focus(); return; }
-    const f = g / 100;
+    const r = calc(), u = units[unit];
+    if (!r || r.g > 5000 || (u && r.v > 100)) {
+      $('#gErr').textContent = u ? 'اكتبي عدد صحيح، مثلاً 1 أو 0.5' : 'اكتبي كمية صحيحة بالجرام';
+      gi.focus(); return;
+    }
+    const f = r.g / 100;
     const log = store.get(dayKey(), []);
-    log.push({ id: uid(), name: p.name, g: r1(g), k: r1(p.kcal * f),
-      p: p.protein != null ? r1(p.protein * f) : 0, c: p.carbs != null ? r1(p.carbs * f) : 0, f: p.fat != null ? r1(p.fat * f) : 0 });
+    log.push({ id: uid(), name: p.name, g: r1(r.g), k: r1(p.kcal * f),
+      p: p.protein != null ? r1(p.protein * f) : 0, c: p.carbs != null ? r1(p.carbs * f) : 0, f: p.fat != null ? r1(p.fat * f) : 0,
+      ...(u ? { u: u.n, n: Math.round(r.v * 100) / 100 } : {}) });
     store.set(dayKey(), log);
     remember(p);
     sheet.close(); render(); toast('أُضيفت لأكل اليوم');
@@ -383,17 +459,21 @@ function showProduct(p) {
 /* ===== نموذج إضافة / تعديل منتج ===== */
 function showForm(p = {}, msg = '') {
   const editing = !!p.mine;
+  // صنف من قائمة الأكلات (أو نسخته المعدّلة): ينحفظ مع ref ووحداته
+  const isFood = !!(p.food || p.ref);
+  const saveTxt = isFood ? 'احفظي التعديل' : 'احفظي المنتج';
   let basis = '100';
   const v = x => (x == null ? '' : r1(x));
-  openSheet(editing ? 'تعديل المنتج' : 'منتج جديد', `
+  openSheet(isFood ? 'تعديل بيانات الصنف' : editing ? 'تعديل المنتج' : 'منتج جديد', `
     ${msg ? `<p class="note">${esc(msg)}</p>` : ''}
-    <label for="fName">اسم المنتج</label>
+    ${p.food ? '<p class="note">تعديلك ينحفظ في منتجاتك، ويظهر في البحث بدل الصنف الأصلي.</p>' : ''}
+    <label for="fName">${isFood ? 'اسم الصنف' : 'اسم المنتج'}</label>
     <input id="fName" value="${esc(p.name === 'منتج بدون اسم' ? '' : p.name || '')}" maxlength="80" autocomplete="off">
-    <div class="g2">
+    ${isFood ? '' : `<div class="g2">
       <div><label for="fBrand">الشركة (اختياري)</label><input id="fBrand" value="${esc(p.brand || '')}" maxlength="50" autocomplete="off"></div>
       <div><label for="fCode">الباركود (اختياري)</label><input id="fCode" inputmode="numeric" value="${esc(p.barcode || '')}" autocomplete="off"></div>
-    </div>
-    <label>القيم المكتوبة في الملصق لكل</label>
+    </div>`}
+    <label>${isFood ? 'القيم لكل' : 'القيم المكتوبة في الملصق لكل'}</label>
     <div class="seg" id="seg"><button data-b="100" class="on">100 غ أو مل</button><button data-b="srv">حصة</button></div>
     <label for="fServ">حجم الحصة بالجرام <span id="servReq">(اختياري)</span></label>
     <input id="fServ" inputmode="decimal" value="${v(p.serving)}" autocomplete="off">
@@ -406,8 +486,8 @@ function showForm(p = {}, msg = '') {
     </div>
     <p class="err" id="fErr"></p>
     <div class="stack">
-      <button class="btn primary" id="fSave">احفظي المنتج</button>
-      ${editing ? '<button class="btn danger" id="fDel">احذفي المنتج</button>' : ''}
+      <button class="btn primary" id="fSave">${saveTxt}</button>
+      ${editing ? `<button class="btn danger" id="fDel">${p.ref ? 'رجّعي القيم الأصلية' : 'احذفي المنتج'}</button>` : ''}
     </div>`);
 
   $('#seg').onclick = e => {
@@ -421,8 +501,8 @@ function showForm(p = {}, msg = '') {
   $('#fSave').onclick = async () => {
     const err = m => { $('#fErr').textContent = m; };
     const name = $('#fName').value.trim();
-    if (!name) return err('اكتبي اسم المنتج');
-    const code = toEn($('#fCode').value).replace(/\D/g, '');
+    if (!name) return err(isFood ? 'اكتبي اسم الصنف' : 'اكتبي اسم المنتج');
+    const code = isFood ? (p.barcode || '') : toEn($('#fCode').value).replace(/\D/g, '');
     if (code && (code.length < 6 || code.length > 14)) return err('رقم الباركود غير صحيح');
     const serving = numIn($('#fServ').value);
     if (Number.isNaN(serving) || (serving != null && serving <= 0)) return err('حجم الحصة غير صحيح');
@@ -436,7 +516,9 @@ function showForm(p = {}, msg = '') {
     if (kcal > 900) return err('السعرات لكل 100 غ ما تتجاوز 900، راجعي الرقم أو اختاري "حصة"');
     if ((protein || 0) + (carbs || 0) + (fat || 0) > 105) return err('مجموع البروتين والكارب والدهون أكثر من 100 غ، راجعي الأرقام');
 
-    const payload = { name, brand: $('#fBrand').value.trim(), barcode: code || null, kcal, protein, carbs, fat, serving };
+    const payload = { name, brand: isFood ? (p.brand || '') : $('#fBrand').value.trim(), barcode: code || null, kcal, protein, carbs, fat, serving };
+    if (isFood) payload.ref = p.ref || p.id;
+    if (Array.isArray(p.units) && p.units.length) payload.units = p.units;
     if (editing && !p.barcode && !code && /^m/.test(p.id || '')) payload.id = p.id;
     const oldKey = editing ? pKey(p) : null;
     const btn = $('#fSave'); btn.disabled = true; btn.textContent = 'جاري الحفظ';
@@ -444,7 +526,7 @@ function showForm(p = {}, msg = '') {
     let saved;
     try {
       const { ok, data } = await api('/api/products', { method: 'POST', body: JSON.stringify(payload) });
-      if (!ok) { btn.disabled = false; btn.textContent = 'احفظي المنتج'; return err(data.error || 'ما انحفظ المنتج، حاولي مرة ثانية'); }
+      if (!ok) { btn.disabled = false; btn.textContent = saveTxt; return err(data.error || 'ما انحفظ المنتج، حاولي مرة ثانية'); }
       saved = data.product;
       // لو تغيّر الباركود أو أُضيف لمنتج كان بدونه، نحذف النسخة القديمة
       if (oldKey && oldKey !== pKey(saved)) api('/api/products?id=' + encodeURIComponent(oldKey), { method: 'DELETE' }).catch(() => {});
@@ -461,31 +543,78 @@ function showForm(p = {}, msg = '') {
   };
 
   if (editing) $('#fDel').onclick = async () => {
-    if (!confirm('تحذفين "' + p.name + '" من منتجاتك؟')) return;
+    if (!confirm(p.ref ? 'ترجّعين "' + p.name + '" لقيمه الأصلية؟' : 'تحذفين "' + p.name + '" من منتجاتك؟')) return;
     try {
       const { ok, data } = await api('/api/products?id=' + encodeURIComponent(pKey(p)), { method: 'DELETE' });
       if (!ok) return ($('#fErr').textContent = data.error || 'ما انحذف المنتج');
     } catch { return ($('#fErr').textContent = 'تحتاجين إنترنت عشان تحذفين المنتج'); }
     store.set('mine', getMine().filter(x => pKey(x) !== pKey(p)));
     store.set('recent', getRecent().filter(x => pKey(x) !== pKey(p)));
-    sheet.close(); toast('انحذف المنتج');
+    sheet.close(); toast(p.ref ? 'رجع الصنف لقيمه الأصلية' : 'انحذف المنتج');
   };
 }
 
-/* ===== البحث في المنتجات ===== */
+/* ===== البحث بالاسم ===== */
+function resultRow(p, i, attr) {
+  const u = Array.isArray(p.units) && p.units[0];
+  const sub = u ? `${esc(u.n)} ${Math.round(p.kcal * u.g / 100)} سعرة`
+    : `${esc(p.brand || '')}${p.brand ? '، ' : ''}${r1(p.kcal)} سعرة لكل 100 غ`;
+  return `<li><button class="pick" data-${attr}="${i}"><span class="it"><strong>${esc(p.name)}</strong>
+    <small>${sub}${p.approx ? ' <span class="tag">تقريبي</span>' : ''}</small></span></button></li>`;
+}
 function openSearch() {
-  openSheet('منتجاتك', `
-    <input id="q" placeholder="اكتبي اسم المنتج" autocomplete="off">
+  openSheet('ابحثي عن أكل', `
+    <input id="q" placeholder="اكتبي اسم الأكل أو المنتج، مثلاً: موز" autocomplete="off" enterkeyhint="search">
     <ul class="list" id="results" style="margin-top:12px"></ul>
+    <div id="offBox"></div>
     <div class="stack"><button class="btn ghost" id="newP">أضيفي منتج جديد</button></div>`);
+  let items = [], offItems = [], offFor = '';
+  const NO_NET = 'ما فيه اتصال بالإنترنت. البحث في المنتجات العالمية يحتاج إنترنت.';
+  // نتائج Open Food Facts: ما نبحث فيها إلا لما تضغط الزر
+  const drawOff = (raw, st) => {
+    const box = $('#offBox'); if (!box) return;
+    offFor = raw;
+    if (raw.length < 2) { box.innerHTML = ''; return; }
+    const retry = label => `<div class="stack"><button class="btn ghost" id="offGo">${label}</button></div>`;
+    if (!st) box.innerHTML = retry('ابحثي في المنتجات العالمية');
+    else if (st === 'loading') box.innerHTML = '<p class="loading" style="padding:20px 0">أبحث في المنتجات العالمية…</p>';
+    else if (st.error) box.innerHTML = `<p class="note" style="margin-top:14px">${esc(st.error)}</p>` + retry('حاولي مرة ثانية');
+    else {
+      const have = new Set(items.map(pKey));
+      offItems = st.products.filter(p => !have.has(pKey(p)));
+      box.innerHTML = offItems.length
+        ? `<h3 class="sub">منتجات عالمية</h3><ul class="list" id="offRes">${offItems.map((p, i) => resultRow(p, i, 'o')).join('')}</ul>`
+        : `<p class="note" style="margin-top:14px">${st.products.length ? 'المنتجات العالمية اللي لقيتها موجودة في النتائج فوق.'
+          : 'ما لقيت منتجات عالمية بهذا الاسم. جرّبي اسم ثاني أو اكتبيه بالإنجليزي، أو امسحي الباركود.'}</p>`;
+    }
+    const go = $('#offGo'); if (go) go.onclick = () => searchOff(raw);
+  };
+  const searchOff = async raw => {
+    drawOff(raw, 'loading');
+    let st;
+    if (navigator.onLine === false) st = { error: NO_NET };
+    else try {
+      const { ok, data } = await api('/api/search?q=' + encodeURIComponent(raw));
+      st = ok && Array.isArray(data.products) ? { products: data.products } : { error: data.error || 'ما قدرت أبحث الحين، حاولي بعد شوي.' };
+    } catch { st = { error: NO_NET }; }
+    if ($('#q') && $('#q').value.trim() === raw) drawOff(raw, st);
+  };
   const draw = () => {
-    const q = norm($('#q').value.trim());
-    const items = pool().filter(p => !q || norm(p.name + ' ' + (p.brand || '')).includes(q)).slice(0, 50);
+    const raw = $('#q').value.trim();
+    items = searchLocal(raw);
     $('#results').innerHTML = items.length
-      ? items.map((p, i) => `<li><button class="pick" data-i="${i}"><span class="it"><strong>${esc(p.name)}</strong>
-          <small>${esc(p.brand || '')}${p.brand ? '، ' : ''}${r1(p.kcal)} سعرة لكل 100 غ</small></span></button></li>`).join('')
-      : `<li class="empty">${q ? 'ما لقيت منتج بهذا الاسم.' : 'المنتجات اللي تمسحينها أو تضيفينها بتظهر هنا.'}</li>`;
-    $('#results').onclick = e => { const b = e.target.closest('[data-i]'); if (b) showProduct(items[b.dataset.i]); };
+      ? items.map((p, i) => resultRow(p, i, 'i')).join('')
+      : `<li class="empty">${raw ? 'ما لقيت شي بهذا الاسم.' : 'اكتبي اسم الأكل، مثلاً: موز، رز، كبسة. ومنتجاتك والمنتجات اللي تمسحينها بتظهر هنا.'}</li>`;
+    if (raw !== offFor) drawOff(raw, null);
+  };
+  $('#results').onclick = e => { const b = e.target.closest('[data-i]'); if (b) showProduct(items[b.dataset.i]); };
+  $('#offBox').onclick = e => {
+    const b = e.target.closest('[data-o]'); if (!b) return;
+    const p = offItems[b.dataset.o];
+    // لو المنتج محفوظ عندها بتعديلاتها، نستخدم نسختها
+    const chosen = getMine().find(x => x.barcode && x.barcode === p.barcode) || p;
+    remember(chosen);
+    showProduct(chosen);
   };
   $('#q').oninput = draw;
   $('#newP').onclick = () => showForm({});

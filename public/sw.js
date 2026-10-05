@@ -1,7 +1,8 @@
 // Service Worker: يخلي التطبيق يفتح بدون إنترنت
-const CACHE = 'soarati-v1';
+const CACHE = 'soarati-v2';
 const ASSETS = [
   '/',
+  '/foods.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -33,6 +34,20 @@ self.addEventListener('fetch', (e) => {
         return res;
       }).catch(() => caches.match('/'))
     );
+    return;
+  }
+
+  // قائمة الأكلات: من الكاش فوراً، ونحدّثها من الشبكة بالخلفية للمرة الجاية
+  if (url.origin === location.origin && url.pathname === '/foods.js') {
+    e.respondWith(caches.open(CACHE).then(async (c) => {
+      const hit = await c.match('/foods.js');
+      const net = fetch(req).then((res) => {
+        if (res.ok) c.put('/foods.js', res.clone());
+        return res;
+      });
+      if (hit) { e.waitUntil(net.catch(() => {})); return hit; }
+      return net;
+    }));
     return;
   }
 
