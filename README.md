@@ -51,4 +51,5 @@ scripts/           سكربت فحص قائمة الأكلات (ما يُرفع 
 - بيانات المنتجات العالمية من Open Food Facts المجانية.
 - قيم الأكلات الأساسية في `public/foods.js` من USDA FoodData Central، والأكلات المطبوخة والحلويات قيمها تقريبية.
 - بعد أي تعديل على `public/foods.js` شغّل `node scripts/check-foods.mjs` للتأكد إن القيم سليمة.
+- لو ظهرت في Cloudflare رسالة "This project is disconnected from your Git account" والتحديثات ما توصل: من GitHub افتح github.com/settings/installations ← **Cloudflare Workers and Pages** ← **Configure** وتأكد إن مستودع `soarati` مختار، وبعدها ارفع أي تعديل.
 - لا تضيف ملف `wrangler.toml` للمستودع، لأنه يلغي إعدادات الربط اللي سويتها من لوحة Cloudflare.
