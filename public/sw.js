@@ -1,12 +1,15 @@
 // Service Worker: يخلي التطبيق يفتح بدون إنترنت
-const CACHE = 'soarati-v2';
+const CACHE = 'soarati-v3';
 const ASSETS = [
   '/',
   '/foods.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
+  // ماسح zxing-wasm: للأجهزة اللي ما فيها BarcodeDetector (مثل الآيفون)
+  'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/es/reader/index.js',
+  'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/es/share.js',
+  'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/reader/zxing_reader.wasm',
 ];
 
 self.addEventListener('install', (e) => {

@@ -14,7 +14,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 <style>
 :root{
   --bg:#F6F2F6; --card:#FFFFFF; --ink:#2B1B29; --muted:#76657A;
@@ -83,8 +82,17 @@ dialog.sheet[open]{animation:up .22s ease-out}
 .sheet-in{padding:16px 18px calc(22px + env(safe-area-inset-bottom));overflow:auto;max-height:92vh}
 .sheet-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
 .sheet-top h2{font-size:1.15rem;font-weight:500}
-#reader{border-radius:14px;overflow:hidden;background:#000;min-height:230px}
-#reader video{width:100%!important;display:block}
+#reader{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3}
+#reader video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+/* إطار التوجيه: نفس المنطقة اللي نحللها بالضبط (ROI في السكربت) */
+#reader .guide{position:absolute;left:7%;right:7%;top:33%;height:34%;border:2.5px solid rgba(255,255,255,.95);border-radius:12px;
+  box-shadow:0 0 0 100vmax rgba(0,0,0,.45);pointer-events:none;transition:border-color .15s}
+#reader .guide::after{content:"";position:absolute;left:6%;right:6%;top:50%;height:2px;background:rgba(255,80,110,.85)}
+#reader .guide.hit{border-color:#7CE0A0}
+#torch{position:absolute;top:10px;inset-inline-end:10px;width:44px;height:44px;border-radius:50%;border:0;
+  background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;cursor:pointer}
+#torch[aria-pressed="true"]{background:#FFD54A;color:#2B1B29}
+#torch svg{width:22px;height:22px}
 .hint{color:var(--muted);font-size:.9rem;margin:10px 2px}
 .row{display:flex;gap:8px;align-items:stretch}
 .row .btn{width:auto;flex:none;padding:0 18px}
@@ -325,37 +333,166 @@ sheet.addEventListener('click', e => { if (e.target === sheet || e.target.closes
 sheet.addEventListener('close', stopScanner);
 
 /* ===== الماسح ===== */
-let qr = null, busy = false;
-async function stopScanner() {
-  const q = qr; qr = null;
-  if (q) { try { if (q.isScanning) await q.stop(); q.clear(); } catch {} }
+// BarcodeDetector إذا المتصفح يدعمه، وإلا zxing-wasm. نحلل شريط أفقي بالنص بس (نفس إطار التوجيه).
+const SCAN_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
+const ZX_FORMATS = { ean_13: 'EAN13', ean_8: 'EAN8', upc_a: 'UPCA', upc_e: 'UPCE' };
+const ZX_VER = '3.1.4', ZX_BASE = `https://cdn.jsdelivr.net/npm/zxing-wasm@${ZX_VER}/dist/`;
+const ROI = { x: .07, y: .33, w: .86, h: .34 }; // كنسبة من مساحة العرض، يطابق .guide في CSS
+const SCAN_EVERY = 90; // ms بين كل تحليل والثاني
+let scan = null, busy = false, zxing = null;
+
+// رقم التحقق: نفس خوارزمية EAN/UPC (أوزان 3 و 1 من اليمين)
+function gtinOk(d) {
+  if (!/^\d+$/.test(d)) return false;
+  let sum = 0;
+  for (let i = d.length - 2, w = 3; i >= 0; i--, w = 4 - w) sum += +d[i] * w;
+  return (10 - sum % 10) % 10 === +d[d.length - 1];
 }
+// UPC-E (8 أرقام) نفكّه لـ UPC-A ونتحقق منه
+function upceToA(e) {
+  const ns = e[0], m = e.slice(1, 7), c = e[7], l = m[5];
+  const body = l <= '2' ? m.slice(0, 2) + l + '0000' + m.slice(2, 5)
+    : l === '3' ? m.slice(0, 3) + '00000' + m.slice(3, 5)
+    : l === '4' ? m.slice(0, 4) + '00000' + m[4]
+    : m.slice(0, 5) + '0000' + l;
+  return ns + body + c;
+}
+// UPC-A (12) → UPC-E (8)، نجرّب أشكال الضغط ونتأكد إنها ترجع لنفس الرقم
+function upcaToE(a) {
+  const ns = a[0], m = a.slice(1, 6), p = a.slice(6, 11), c = a[11];
+  return [m.slice(0, 2) + p.slice(2) + m[2], m.slice(0, 3) + p.slice(3) + '3', m.slice(0, 4) + p[4] + '4', m + p[4]]
+    .map(x => ns + x + c).find(e => upceToA(e) === a) || null;
+}
+// يرجّع الرقم بشكل موحّد مهما كان المحرك (UPC-A = 12 رقم، UPC-E = 8) أو null إذا رقم التحقق غلط
+function validCode(raw, fmt) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 13 && d[0] === '0') d = d.slice(1); // zxing يرجّع UPC-A/UPC-E بصيغة 13 رقم
+  if (fmt === 'upc_e') {
+    if (d.length === 12) d = upcaToE(d) || '';
+    return d.length === 8 && (d[0] === '0' || d[0] === '1') && gtinOk(upceToA(d)) ? d : null;
+  }
+  return [8, 12, 13].includes(d.length) && gtinOk(d) ? d : null;
+}
+
+function loadZxing() {
+  return zxing ||= import(ZX_BASE + 'es/reader/index.js').then(async m => {
+    await m.prepareZXingModule({
+      overrides: { locateFile: (p, prefix) => p.endsWith('.wasm') ? ZX_BASE + 'reader/' + p : prefix + p },
+      fireImmediately: true,
+    });
+    return m;
+  }).catch(e => { zxing = null; throw e; });
+}
+async function makeDetector() {
+  if ('BarcodeDetector' in window) {
+    try {
+      const sup = await BarcodeDetector.getSupportedFormats();
+      const formats = SCAN_FORMATS.filter(f => sup.includes(f));
+      if (formats.length) {
+        const bd = new BarcodeDetector({ formats });
+        return async c => (await bd.detect(c)).map(r => ({ text: r.rawValue, format: r.format }));
+      }
+    } catch {}
+  }
+  const zx = await loadZxing();
+  const fromZx = Object.fromEntries(Object.entries(ZX_FORMATS).map(([k, v]) => [v, k]));
+  const opts = { formats: Object.values(ZX_FORMATS), tryHarder: true, maxNumberOfSymbols: 1 };
+  return async (c, ctx) => (await zx.readBarcodes(ctx.getImageData(0, 0, c.width, c.height), opts))
+    .filter(r => r.isValid).map(r => ({ text: r.text, format: fromZx[r.format] }));
+}
+
+async function startCamera() {
+  const base = { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...base, advanced: [{ focusMode: 'continuous' }] } }); }
+  catch (e) {
+    if (e.name === 'NotAllowedError' || e.name === 'SecurityError') throw e;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: base });
+  }
+  const track = stream.getVideoTracks()[0];
+  const caps = track.getCapabilities?.() || {};
+  if (caps.focusMode?.includes('continuous')) { try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {} }
+  return { stream, track, torch: !!caps.torch };
+}
+
+function stopScanner() {
+  const s = scan; scan = null;
+  if (!s) return;
+  s.stopped = true;
+  clearTimeout(s.timer);
+  s.stream?.getTracks().forEach(t => t.stop());
+}
+
 async function openScanner() {
+  stopScanner();
   openSheet('امسحي الباركود', `
-    <div id="reader"></div>
-    <p class="hint" id="scanHint">وجّهي الكاميرا على الباركود وثبّتي الجوال.</p>
+    <div id="reader"><video id="scanVideo" playsinline muted autoplay></video><div class="guide" id="guide"></div>
+      <button id="torch" hidden aria-pressed="false" aria-label="الفلاش">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+      </button></div>
+    <p class="hint" id="scanHint">حطّي الباركود داخل الإطار بشكل أفقي وثبّتي الجوال.</p>
     <div class="row"><input id="manualCode" inputmode="numeric" placeholder="أو اكتبي رقم الباركود" autocomplete="off">
     <button class="btn ghost" id="manualGo">ابحثي</button></div>`);
   $('#manualGo').onclick = () => { const c = toEn($('#manualCode').value).replace(/\D/g, ''); if (c) { stopScanner(); lookup(c); } };
-  if (!window.Html5Qrcode) { $('#scanHint').textContent = 'الماسح ما اشتغل. اكتبي رقم الباركود بدلاً منه.'; return; }
-  const F = Html5QrcodeSupportedFormats;
-  const q = new Html5Qrcode('reader', { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false,
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
-  qr = q;
-  try {
-    await q.start({ facingMode: 'environment' },
-      { fps: 12, qrbox: (w, h) => ({ width: Math.max(120, Math.floor(w * .85)), height: Math.max(60, Math.floor(Math.min(h * .45, 150))) }) },
-      code => onScan(code), () => {});
-    if (qr !== q) { try { await q.stop(); q.clear(); } catch {} } // انقفلت الورقة أثناء التشغيل
-  } catch {
-    if (qr === q) $('#scanHint').textContent = 'ما قدرت أفتح الكاميرا. اسمحي للمتصفح باستخدام الكاميرا من الإعدادات، أو اكتبي الرقم.';
+  const hint = t => { if (scan === s) $('#scanHint').textContent = t; };
+  const s = scan = { stopped: false };
+  if (!navigator.mediaDevices?.getUserMedia) return hint('المتصفح ما يدعم الكاميرا. اكتبي رقم الباركود بدلاً منه.');
+
+  const detP = makeDetector(); detP.catch(() => {});
+  try { Object.assign(s, await startCamera()); }
+  catch { return hint('ما قدرت أفتح الكاميرا. اسمحي للمتصفح باستخدام الكاميرا من الإعدادات، أو اكتبي الرقم.'); }
+  if (s.stopped) return s.stream.getTracks().forEach(t => t.stop()); // انقفلت الورقة أثناء التشغيل
+
+  const video = $('#scanVideo');
+  video.srcObject = s.stream;
+  try { await video.play(); } catch {}
+
+  if (s.torch) {
+    const tb = $('#torch'); tb.hidden = false;
+    tb.onclick = async () => {
+      const on = tb.getAttribute('aria-pressed') !== 'true';
+      try { await s.track.applyConstraints({ advanced: [{ torch: on }] }); tb.setAttribute('aria-pressed', on); } catch {}
+    };
   }
+
+  let detect;
+  try { detect = await detP; }
+  catch { return hint('الماسح ما اشتغل. اكتبي رقم الباركود بدلاً منه.'); }
+  if (s.stopped) return;
+
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let last = null, hits = 0;
+  const tick = async () => {
+    if (s.stopped) return;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (vw && vh && video.readyState >= 2) {
+      // تحويل الإطار من إحداثيات العرض (object-fit:cover) لإحداثيات الفيديو
+      const cw = video.clientWidth, ch = video.clientHeight, k = Math.max(cw / vw, ch / vh);
+      const ox = (vw - cw / k) / 2, oy = (vh - ch / k) / 2;
+      const sx = ox + ROI.x * cw / k, sy = oy + ROI.y * ch / k, sw = ROI.w * cw / k, sh = ROI.h * ch / k;
+      const scale = Math.min(1, 1280 / sw);
+      canvas.width = Math.round(sw * scale); canvas.height = Math.round(sh * scale);
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      let found = null;
+      try {
+        for (const r of await detect(canvas, ctx)) { const c = validCode(r.text, r.format); if (c) { found = c; break; } }
+      } catch {}
+      if (s.stopped) return;
+      if (found) {
+        hits = found === last ? hits + 1 : 1; last = found;
+        $('#guide')?.classList.add('hit');
+        if (hits >= 2) return onScan(found); // نعتمد القراءة بعد تطابقها مرتين
+      } else $('#guide')?.classList.remove('hit');
+    }
+    s.timer = setTimeout(tick, SCAN_EVERY);
+  };
+  tick();
 }
 async function onScan(code) {
   if (busy) return; busy = true;
-  navigator.vibrate?.(70); beep();
-  await stopScanner();
-  await lookup(String(code).replace(/\D/g, ''));
+  navigator.vibrate?.([60, 40, 60]); beep();
+  stopScanner();
+  await lookup(code);
   busy = false;
 }
 
